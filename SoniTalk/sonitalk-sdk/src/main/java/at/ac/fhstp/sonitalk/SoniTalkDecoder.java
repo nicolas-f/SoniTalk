@@ -44,6 +44,7 @@ import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 import marytts.util.math.ComplexArray;
 import marytts.util.math.Hilbert;
 import uk.me.berndporr.iirj.Butterworth;
+import org.noise_planet.jwarble.OpenWarble;
 
 /**
  * Handles the capture of audio, the detection of messages and their decoding. The receiveBackground
@@ -112,6 +113,8 @@ public class SoniTalkDecoder {
 
     // Profile
     private SoniTalkConfig config;
+
+    private OpenWarble openWarble;
 
     // Recognition parameter
     private double startFactor;// = 2.0;

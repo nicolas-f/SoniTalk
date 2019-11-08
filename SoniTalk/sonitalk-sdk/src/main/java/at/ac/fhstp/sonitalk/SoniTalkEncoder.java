@@ -250,7 +250,7 @@ public class SoniTalkEncoder {
      * @param doubleInverted boolean if inverting is used
      * @return concatenated message short array
      */
-    private short[] concatenateSignalBlocks(short[][] frequencyZeroTrack, short[][] frequencyZeroTrackInverted, short[] protoTrackStart, short[] protoTrackEnd, short[] pauseTrack, int pauseduration, boolean doubleInverted){
+    private short[] d .concatenateSignalBlocks(short[][] frequencyZeroTrack, short[][] frequencyZeroTrackInverted, short[] protoTrackStart, short[] protoTrackEnd, short[] pauseTrack, int pauseduration, boolean doubleInverted){
         short[] encodedMessage = null;
 
         for(int i=0; i<frequencyZeroTrack.length; i++){
