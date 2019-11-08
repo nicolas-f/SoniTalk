@@ -265,6 +265,12 @@ public class SoniTalkDecoder implements MessageCallback {
      * As soon as the historyBuffer is full every, it will be analyzed every loop run.
      */
     private void startDecoding() {
+
+        try {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+        } catch (IllegalArgumentException | SecurityException ex) {
+            // Ignore
+        }
         if (! soniTalkContext.checkMicrophonePermission()) {
             throw new SecurityException("Does not have android.permission.RECORD_AUDIO.");
         }
