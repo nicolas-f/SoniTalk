@@ -30,7 +30,7 @@ public class CircularArray {
     private int size;
 
     public CircularArray(int size) {
-        this.circularArray = new float[size]; // Java arrays get default values on initialization, here 0.0f
+        this.circularArray = new float[size]; // Java arrays getDriverConfiguration default values on initialization, here 0.0f
         this.index = 0;
         this.analysisIndex = 0;
         this.size = size;

@@ -19,29 +19,38 @@
 
 package at.ac.fhstp.sonitalk;
 
+import android.content.res.Configuration;
+
 /**
  * Configuration, or profile, used to transmit data. The emitter and receiver of a message must use
  * the same configuration. A crucial use case will be transmitting with several profiles simultaneously.
  * This will allow for faster communication within one app and simultaneous communication of several apps.
- * To get preset configurations, the utility class ConfigFactory has the function loadFromJson().
+ * To getDriverConfiguration preset configurations, the utility class ConfigFactory has the function loadFromJson().
  */
 public class SoniTalkConfig {
     private int frequencyZero;// = 18000; (Hz)
     private int bitperiod;// = 100; (ms)
     private int pauseperiod;// = 0; (ms)
-    private int nMaxCharacters;// = 18; // Remove ? Not used anymore. or Rename to payload ? or nBytesMessage ? nBytesContent ?
-    private int nParityBytes; //  = 2 Parity bytes (actually 16 bits)
-    private int nMessageBlocks;
+    private int maxBytes;
     private int nFrequencies;// = 16;
     private int frequencySpace;// = 100; (Hz)
 
-    public SoniTalkConfig(int frequencyZero, int bitperiod, int pauseperiod, int nMessageBlocks, int nFrequencies, int frequencySpace) {
+    public SoniTalkConfig(int frequencyZero, int bitperiod, int pauseperiod, int maxBytes, int nFrequencies, int frequencySpace) {
         this.frequencyZero = frequencyZero;
         this.bitperiod = bitperiod;
         this.pauseperiod = pauseperiod;
-        this.nMessageBlocks = nMessageBlocks;
+        this.maxBytes = maxBytes;
         this.nFrequencies = nFrequencies;
         this.frequencySpace = frequencySpace;
+    }
+
+    public org.noise_planet.jwarble.Configuration getDriverConfiguration(double sampleRate) {
+//        return new org.noise_planet.jwarble.Configuration(getMaxBytes(), sampleRate,
+//                getFrequencyZero(), getFrequencySpace(), 0,
+//                getBitperiod() / 1000.0,
+//                getPauseperiod() / 1000.0, org.noise_planet.jwarble.Configuration.DEFAULT_TRIGGER_SNR,
+//                org.noise_planet.jwarble.Configuration.DEFAULT_DOOR_PEAK_RATIO, org.noise_planet.jwarble.Configuration.DEFAULT_RS_ENCODE);
+        return org.noise_planet.jwarble.Configuration.getAudible(maxBytes, sampleRate);
     }
 
     public int getFrequencyZero() {
@@ -68,12 +77,12 @@ public class SoniTalkConfig {
         this.pauseperiod = pauseperiod;
     }
 
-    public int getnMessageBlocks() {
-        return nMessageBlocks;
+    public int getMaxBytes() {
+        return maxBytes;
     }
 
-    public void setnMessageBlocks(int nMessageBlocks) {
-        this.nMessageBlocks = nMessageBlocks;
+    public void setMaxBytes(int maxBytes) {
+        this.maxBytes = maxBytes;
     }
 
     public int getnFrequencies() {

@@ -76,7 +76,7 @@ public class EncoderUtils {
     /**
      * Uses byte array length check and returns the casted bit sequence or Exception.
      * @param textToSend text to check
-     * @param config SoniTalkConfig to get number of message blocks
+     * @param config SoniTalkConfig to getDriverConfiguration number of message blocks
      * @return casted bit sequence or throws IllegalArgument if size exceeded
      */
     public String getStringOfEncodedBits(byte[] textToSend, SoniTalkConfig config){
@@ -92,11 +92,11 @@ public class EncoderUtils {
     /**
      * Checks if the byte array does not exceed the number of allowed bytes.
      * @param textToSend byte array to check
-     * @param config SoniTalkConfig to get number of message blocks
+     * @param config SoniTalkConfig to getDriverConfiguration number of message blocks
      * @return boolean depending on the number of bytes
      */
     public static boolean isAllowedByteArraySize(byte[] textToSend, SoniTalkConfig config){
-        int maxChars =  config.getnMessageBlocks()*(config.getnFrequencies()/8)-2;
+        int maxChars =  config.getMaxBytes()*(config.getnFrequencies()/8)-2;
         if(changeToBitString(textToSend).length()<=(maxChars*8)) {
             return true;
         }else{

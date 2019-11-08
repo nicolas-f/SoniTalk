@@ -380,7 +380,7 @@ public class SettingsFragment extends PreferenceFragment {
         editor.putString(ConfigConstants.BIT_PERIOD, String.valueOf(config.getBitperiod()));
         editor.putString(ConfigConstants.PAUSE_PERIOD, String.valueOf(config.getPauseperiod()));
         editor.putString(ConfigConstants.SPACE_BETWEEN_FREQUENCIES, String.valueOf(config.getFrequencySpace()));
-        editor.putString(ConfigConstants.NUMBER_OF_BYTES, String.valueOf((config.getnMessageBlocks()*2-2)));
+        editor.putString(ConfigConstants.NUMBER_OF_BYTES, String.valueOf((config.getMaxBytes()*2-2)));
         editor.putString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT);
         editor.putString(ConfigConstants.PRESET, String.valueOf("default_config.json"));
 
@@ -397,7 +397,7 @@ public class SettingsFragment extends PreferenceFragment {
         etBitperiod.setText(String.valueOf(config.getBitperiod()));
         etPauseperiod.setText(String.valueOf(config.getPauseperiod()));
         etFrequencyspace.setText(String.valueOf(config.getFrequencySpace()));
-        etNMaxCharacters.setText(String.valueOf(config.getnMessageBlocks()*2-2));
+        etNMaxCharacters.setText(String.valueOf(config.getMaxBytes()));
         lpNumberOfFrequencies.setValueIndex(1);
 
         String presetsStr = String.format(getString(R.string.settings_preset_title), String.valueOf("default_config.json"));
@@ -463,7 +463,7 @@ public class SettingsFragment extends PreferenceFragment {
         editor.putString(ConfigConstants.BIT_PERIOD, String.valueOf(config.getBitperiod()));
         editor.putString(ConfigConstants.PAUSE_PERIOD, String.valueOf(config.getPauseperiod()));
         editor.putString(ConfigConstants.SPACE_BETWEEN_FREQUENCIES, String.valueOf(config.getFrequencySpace()));
-        editor.putString(ConfigConstants.NUMBER_OF_BYTES, String.valueOf((config.getnMessageBlocks()*2-2)));
+        editor.putString(ConfigConstants.NUMBER_OF_BYTES, String.valueOf((config.getMaxBytes())));
         editor.putString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT);
         editor.putString(ConfigConstants.PRESET, configName);
 
@@ -474,7 +474,7 @@ public class SettingsFragment extends PreferenceFragment {
         etBitperiod.setText(String.valueOf(config.getBitperiod()));
         etPauseperiod.setText(String.valueOf(config.getPauseperiod()));
         etFrequencyspace.setText(String.valueOf(config.getFrequencySpace()));
-        etNMaxCharacters.setText(String.valueOf(config.getnMessageBlocks()*2-2));
+        etNMaxCharacters.setText(String.valueOf(config.getMaxBytes()));
 
         lpNumberOfFrequencies.setValueIndex(checkFrequencyListViewIndex(String.valueOf(config.getnFrequencies())));
 

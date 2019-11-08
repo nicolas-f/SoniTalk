@@ -83,7 +83,7 @@ public class CRC {
     }
 
     /**
-     * Calls xorArray to get a remainder bit sequence depending on the generator polynomal.
+     * Calls xorArray to getDriverConfiguration a remainder bit sequence depending on the generator polynomal.
      * returns this bit sequence as error detection for the message
      * @param bitOfText the message after which the error detection bit sequence is generated
      * @return error detection bit sequence

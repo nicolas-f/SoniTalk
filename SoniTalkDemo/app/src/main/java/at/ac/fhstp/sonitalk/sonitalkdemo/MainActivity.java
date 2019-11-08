@@ -204,12 +204,12 @@ public class MainActivity extends BaseActivity implements SoniTalkDecoder.Messag
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             int currentVolume = audioManager.getStreamVolume(3);
             sp = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-            SharedPreferences.Editor ed = sp.edit();
-            ed.putInt(ConfigConstants.CURRENT_VOLUME, currentVolume);
-            ed.apply();
+//            SharedPreferences.Editor ed = sp.edit();
+//            ed.putInt(ConfigConstants.CURRENT_VOLUME, currentVolume);
+//            ed.apply();
 
-            int volume = Integer.valueOf(sp.getString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT));
-            audioManager.setStreamVolume(3, (int) Math.round((audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * volume/100.0D)), 0);
+            //int volume = Integer.valueOf(sp.getString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT));
+            //audioManager.setStreamVolume(3, (int) Math.round((audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * volume/100.0D)), 0);
 
             if (soniTalkContext == null) {
                 soniTalkContext = SoniTalkContext.getInstance(MainActivity.this, soniTalkPermissionsResultReceiver);
@@ -241,9 +241,7 @@ public class MainActivity extends BaseActivity implements SoniTalkDecoder.Messag
         int nFrequencies = Integer.valueOf(sp.getString(ConfigConstants.NUMBER_OF_FREQUENCIES, ConfigConstants.SETTING_NUMBER_OF_FREQUENCIES_DEFAULT));
         int frequencySpace = Integer.valueOf(sp.getString(ConfigConstants.SPACE_BETWEEN_FREQUENCIES, ConfigConstants.SETTING_SPACE_BETWEEN_FREQUENCIES_DEFAULT));
         int nMaxBytes = Integer.valueOf(sp.getString(ConfigConstants.NUMBER_OF_BYTES, ConfigConstants.SETTING_NUMBER_OF_BYTES_DEFAULT));
-
-        int nMessageBlocks = (nMaxBytes+2) / 2; // We want 10 message blocks by default
-        SoniTalkConfig config = new SoniTalkConfig(f0, bitperiod, pauseperiod, nMessageBlocks, nFrequencies, frequencySpace);
+        SoniTalkConfig config = new SoniTalkConfig(f0, bitperiod, pauseperiod, nMaxBytes, nFrequencies, frequencySpace);
         if (soniTalkContext == null) {
             soniTalkContext = SoniTalkContext.getInstance(MainActivity.this, soniTalkPermissionsResultReceiver);
         }
@@ -378,8 +376,7 @@ public class MainActivity extends BaseActivity implements SoniTalkDecoder.Messag
             config.setFrequencyZero(f0);
             config.setBitperiod(bitperiod);
             config.setPauseperiod(pauseperiod);
-            int nMessageBlocks = (nMaxBytes+2) / 2; // Default is 10 (transmitting 20 bytes with 16 frequencies)
-            config.setnMessageBlocks(nMessageBlocks);
+            config.setMaxBytes(nMaxBytes);
             config.setnFrequencies(nFrequencies);
             config.setFrequencySpace(frequencySpace);
 

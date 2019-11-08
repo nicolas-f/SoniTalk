@@ -31,19 +31,18 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import at.ac.fhstp.sonitalk.exceptions.DecoderStateException;
 import at.ac.fhstp.sonitalk.utils.CRC;
 import at.ac.fhstp.sonitalk.utils.CircularArray;
-import at.ac.fhstp.sonitalk.utils.ConfigConstants;
-import at.ac.fhstp.sonitalk.utils.DecoderUtils;
-import at.ac.fhstp.sonitalk.utils.HammingWindow;
-import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
-import marytts.util.math.ComplexArray;
-import marytts.util.math.Hilbert;
-import uk.me.berndporr.iirj.Butterworth;
+
+import org.noise_planet.jwarble.Configuration;
+import org.noise_planet.jwarble.MessageCallback;
 import org.noise_planet.jwarble.OpenWarble;
 
 /**
@@ -51,10 +50,10 @@ import org.noise_planet.jwarble.OpenWarble;
  * functions execute in a worker Thread and need to be stopped when your application stops. Please
  * call stopReceiving() when you are done with receiving to release the resources (e.g. microphone access)
  */
-public class SoniTalkDecoder {
+public class SoniTalkDecoder implements MessageCallback {
     private static final String TAG = SoniTalkDecoder.class.getSimpleName();
     private final SoniTalkContext soniTalkContext;
-
+    private DecoderThread decoderThread;
     // Define the list of accepted constants for DecoderState annotation
     @Retention(RetentionPolicy.SOURCE)
     @IntDef({STATE_INITIALIZED, STATE_LISTENING, STATE_CANCELLED, STATE_STOPPED})
@@ -75,6 +74,21 @@ public class SoniTalkDecoder {
          * @param errorMessage description of an error that occurred while trying to receive a message.
          */
         void onDecoderError(String errorMessage);
+    }
+
+    @Override
+    public void onNewMessage(byte[] payload, long sampleId) {
+        notifyMessageListeners(new SoniTalkMessage(payload, true, (int)((sampleId / (double)Fs)*1e6)));
+    }
+
+    @Override
+    public void onPitch(long sampleId) {
+
+    }
+
+    @Override
+    public void onError(long sampleId) {
+        notifyMessageListenersOfError("Cannot repair message");
     }
 
     /**
@@ -114,8 +128,6 @@ public class SoniTalkDecoder {
     // Profile
     private SoniTalkConfig config;
 
-    private OpenWarble openWarble;
-
     // Recognition parameter
     private double startFactor;// = 2.0;
     private double endFactor;// = 2.0;
@@ -151,7 +163,7 @@ public class SoniTalkDecoder {
 
     private final CircularArray historyBuffer;
 
-    private boolean loopStopped = false;
+    private AtomicBoolean loopStopped = new AtomicBoolean(false);
     private Handler delayhandler = new Handler();
     private ExecutorService threadExecutor = Executors.newSingleThreadExecutor();
     private int decoderState = STATE_INITIALIZED;
@@ -181,7 +193,7 @@ public class SoniTalkDecoder {
         }
         int bitperiod = config.getBitperiod();
         int pauseperiod = config.getPauseperiod();
-        int nMessageBlocks = config.getnMessageBlocks();
+        int nMessageBlocks = config.getMaxBytes();
         int nFrequencies = config.getnFrequencies();
         int frequencySpace = config.getFrequencySpace();
 
@@ -315,34 +327,17 @@ public class SoniTalkDecoder {
 
         setDecoderState(STATE_LISTENING);
 
+        decoderThread = new DecoderThread(config, (double)Fs, loopStopped, this);
+        new Thread(decoderThread).start();
+
         while (!isLoopStopped()) {
             //for(int audioIndex = 0; audioIndex < stepFactor && !loopStopped; audioIndex++) { // NOTE: This for loop was used to know when a full winLen had been read, currently not used.
             // ACTUAL AUDIO READ
             readBytes = audioRecorder.read(tempBuffer, 0, neededBytes);
 
-            readTimestamp = System.nanoTime();
-            if (readBytes != neededBytes) {
-                //Log.e(TAG, "ERROR " + readBytes);
-            } else {
-                //Log.e(TAG, "ReadBytes " + readBytes);
-                convertShortToFloat(tempBuffer, currentData, readBytes);
-
-                synchronized (historyBuffer) {
-                    historyBuffer.add(currentData);
-                }
-                //if (counter < (historyBuffer.size() / neededBytes)) { //Note: Differs from Octave version
-                if (counter < (nBlocks*nAnalysisWindowsPerBit-nAnalysisWindowsPerPause)) { // Looks more like Octave version
-                    //Log.e("HistoryBuffer", "I am not full");
-                    //Log.d("HisoryBuffercounter", "Counter " + counter);
-                    //Log.d("HisoryBuffersize", "Size " + historyBuffer.size());
-                } else { // At this point the buffer is very close to be full
-                    analyzeHistoryBuffer();
-                }
-                counter++; // Octave version put it at the end
+            if(readBytes > 0) {
+                decoderThread.addSample(Arrays.copyOf(tempBuffer, readBytes));
             }
-            //}
-
-            //counter++;
 
         } // THREAD-LOOP ENDS HERE
 
@@ -358,18 +353,6 @@ public class SoniTalkDecoder {
         //Log.d(TAG, "Message Decoder Thread stopped.");
     }
 
-    /**
-     * Converts an input array from short to [-1.0;1.0] float, result is put into the (pre-allocated) output array
-     * @param input
-     * @param output Should be allocated beforehand
-     * @param arrayLength
-     */
-    private static void convertShortToFloat(short[] input, float[] output, int arrayLength) {
-        for (int i = 0; i < arrayLength; i++) {
-            // Do we actually need float anywhere ? Switch to double ?
-            output[i] = ((float) input[i]) / Short.MAX_VALUE;
-        }
-    }
 
     /**
      *
@@ -410,7 +393,7 @@ public class SoniTalkDecoder {
             }*/
 
             //audioRecorderBufferSize = audioRecorderBufferSize*10;
-            audioRecorder = new AudioRecord(MediaRecorder.AudioSource.MIC,
+            audioRecorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     Fs, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, audioRecorderBufferSize);
 
@@ -425,509 +408,6 @@ public class SoniTalkDecoder {
         }
 
         return audioRecorder;
-    }
-
-    //ublic float[] getHistoryBuffer(){ synchronized (historyBuffer) {return historyBuffer.getArray();} }
-
-
-    private void analyzeHistoryBuffer(){
-        /* Will try with saving the whole buffer directly
-        float firstWindow[];
-        float lastWindow[];
-        synchronized (historyBuffer) {
-            //Log.e("HistoryBuffer", "I am full");
-            firstWindow = historyBuffer.getFirstWindow(analysisWinLen);
-            lastWindow = historyBuffer.getLastWindow(analysisWinLen);
-        }
-        */
-
-        float analysisHistoryBuffer[];
-        synchronized (historyBuffer) {
-            analysisHistoryBuffer = historyBuffer.getArray();
-        }
-        float firstWindow[] = new float[analysisWinLen];
-        float lastWindow[] = new float[analysisWinLen];
-        System.arraycopy(analysisHistoryBuffer, 0, firstWindow, 0, analysisWinLen);
-        System.arraycopy(analysisHistoryBuffer, analysisHistoryBuffer.length - analysisWinLen, lastWindow, 0, analysisWinLen);
-
-
-        float[] startResponseUpper = firstWindow.clone();
-        float[] startResponseLower = firstWindow.clone();
-
-        int nextPowerOfTwo = DecoderUtils.nextPowerOfTwo(analysisWinLen);
-        ////Log.d("nextPowerOfTwo", String.valueOf(nextPowerOfTwo));
-
-        double[] startResponseUpperDouble = new double[nextPowerOfTwo];
-        double[] startResponseLowerDouble = new double[nextPowerOfTwo];
-
-        int centerFrequencyBandPassDown = config.getFrequencyZero() + (bandpassWidth/2);
-        int centerFrequencyBandPassUp = config.getFrequencyZero() + bandpassWidth + (bandpassWidth/2);
-
-/*        // Only checking 2 frequencies for each band
-        int centerFrequencyBandPassDown = f0+450;//+(bandpassWidth/2);
-        int centerFrequencyBandPassUp = 18850;//f0 + bandpassWidth+(bandpassWidth/2);
-        bandpassWidth = 150;
-*/
-
-        Butterworth butterworthDown = new Butterworth();
-        butterworthDown.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassDown,bandpassWidth);
-        Butterworth butterworthUp = new Butterworth();
-        butterworthUp.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassUp,bandpassWidth);
-        for(int i = 0; i<startResponseLower.length; i++) {
-            startResponseUpperDouble[i] = butterworthUp.filter(startResponseUpper[i]);
-            startResponseLowerDouble[i] = butterworthDown.filter(startResponseLower[i]);
-        }
-
-        ComplexArray complexArrayStartResponseUpper = Hilbert.transform(startResponseUpperDouble);
-        ComplexArray complexArrayStartResponseLower = Hilbert.transform(startResponseLowerDouble);
-
-        double sumAbsStartResponseUpper = 0;
-        double sumAbsStartResponseLower = 0;
-        for(int i = 0; i<complexArrayStartResponseUpper.real.length; i++){
-            sumAbsStartResponseUpper += DecoderUtils.getComplexAbsolute(complexArrayStartResponseUpper.real[i], complexArrayStartResponseUpper.imag[i]);
-            sumAbsStartResponseLower += DecoderUtils.getComplexAbsolute(complexArrayStartResponseLower.real[i], complexArrayStartResponseLower.imag[i]);
-        }
-
-/* Without Hilbert
-        double sumAbsStartResponseUpper = 0;
-        double sumAbsStartResponseLower = 0;
-        for(int i = 0; i<startResponseUpperDouble.length; i++){
-            sumAbsStartResponseUpper += Math.abs(startResponseUpperDouble[i]);
-            sumAbsStartResponseLower += Math.abs(startResponseLowerDouble[i]);
-        }
-        */
-
-/* With individual frequencies
-        int frequencies[] = new int[nFrequencies];
-        for (int f = f0, i = 0; f < f0 + nFrequencies*frequencySpace; f += frequencySpace, i++) {
-            frequencies[i] = f;
-        }
-
-        double sumAbsStartResponseUpper = 0;
-        double sumAbsStartResponseLower = 0;
-        for(int fIndex = 0; fIndex < nFrequencies/2; fIndex++) {
-            int freqBandpassWidth = 50;
-            int centerFrequencyBandPassDown = frequencies[fIndex];
-            int centerFrequencyBandPassUp = frequencies[nFrequencies-1-fIndex];
-            Butterworth butterworthDown = new Butterworth();
-            butterworthDown.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassDown,freqBandpassWidth);
-
-            Butterworth butterworthUp = new Butterworth();
-            butterworthUp.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassUp,freqBandpassWidth);
-
-            for(int i = 0; i<startResponseLower.length; i++) {
-                startResponseUpperDouble[i] = butterworthUp.filter(startResponseUpper[i]);
-                startResponseLowerDouble[i] = butterworthDown.filter(startResponseLower[i]);
-            }
-
-            ComplexArray complexArrayStartResponseUpper = Hilbert.transform(startResponseUpperDouble);
-            ComplexArray complexArrayStartResponseLower = Hilbert.transform(startResponseLowerDouble);
-
-            for(int i = 0; i<complexArrayStartResponseUpper.real.length; i++){
-                sumAbsStartResponseUpper += getComplexAbsolute(complexArrayStartResponseUpper.real[i], complexArrayStartResponseUpper.imag[i]);
-                sumAbsStartResponseLower += getComplexAbsolute(complexArrayStartResponseLower.real[i], complexArrayStartResponseLower.imag[i]);
-            }
-        }*/
-
-        long startMessageTimestamp = System.nanoTime();
-        //Log.v("Timing", "From read to start message detection: " + String.valueOf((startMessageTimestamp-readTimestamp)/1000000) + "ms");
-
-        //Log.e("StartResponseAvgBefore", "detection with factor: " + sumAbsStartResponseUpper/sumAbsStartResponseLower);
-        if(sumAbsStartResponseUpper > startFactor * sumAbsStartResponseLower){
-            // IF THIS IS TRUE, WE HAVE A START BLOCK!
-            //Log.d("StartResponseAvg", "message start detected with factor: " + sumAbsStartResponseUpper/sumAbsStartResponseLower);
-            float[] endResponseUpper = lastWindow.clone();
-            float[] endResponseLower = lastWindow.clone();
-
-            double[] endResponseUpperDouble = new double[nextPowerOfTwo];
-            double[] endResponseLowerDouble = new double[nextPowerOfTwo];
-
-
-            /* With individual frequencies
-            double sumAbsEndResponseUpper = 0;
-            double sumAbsEndResponseLower = 0;
-            for(int fIndex = 0; fIndex < nFrequencies/2; fIndex++) {
-                int freqBandpassWidth = 50;
-                int centerFrequencyBandPassDown = frequencies[fIndex];
-                int centerFrequencyBandPassUp = frequencies[nFrequencies-1-fIndex];
-                Butterworth butterworthDownEnd = new Butterworth();
-                butterworthDownEnd.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassDown,freqBandpassWidth);
-
-                Butterworth butterworthUpEnd = new Butterworth();
-                butterworthUpEnd.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassUp,freqBandpassWidth);
-
-                for(int i = 0; i<endResponseUpper.length; i++) {
-                    endResponseUpperDouble[i] = butterworthUpEnd.filter(endResponseUpper[i]);
-                    endResponseLowerDouble[i] = butterworthDownEnd.filter(endResponseLower[i]);
-                }
-
-                ComplexArray complexArrayEndResponseUpper = Hilbert.transform(endResponseUpperDouble);
-                ComplexArray complexArrayEndResponseLower = Hilbert.transform(endResponseLowerDouble);
-
-                for(int i = 0; i<complexArrayEndResponseUpper.real.length; i++){
-                    sumAbsEndResponseUpper += getComplexAbsolute(complexArrayEndResponseUpper.real[i], complexArrayEndResponseUpper.imag[i]);
-                    sumAbsEndResponseLower += getComplexAbsolute(complexArrayEndResponseLower.real[i], complexArrayEndResponseLower.imag[i]);
-                }
-            }*/
-
-            Butterworth butterworthDownEnd = new Butterworth();
-            butterworthDownEnd.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassDown,bandpassWidth);
-            Butterworth butterworthUpEnd = new Butterworth();
-            butterworthUpEnd.bandPass(bandPassFilterOrder,Fs,centerFrequencyBandPassUp,bandpassWidth);
-
-            for(int i = 0; i<endResponseLower.length; i++) {
-                endResponseUpperDouble[i] = butterworthUpEnd.filter(endResponseUpper[i]);
-                endResponseLowerDouble[i] = butterworthDownEnd.filter(endResponseLower[i]);
-            }
-
-            ComplexArray complexArrayEndResponseUpper = Hilbert.transform(endResponseUpperDouble);
-            ComplexArray complexArrayEndResponseLower = Hilbert.transform(endResponseLowerDouble);
-
-            double sumAbsEndResponseUpper = 0;
-            double sumAbsEndResponseLower = 0;
-            for(int i = 0; i<complexArrayEndResponseUpper.real.length; i++){
-                sumAbsEndResponseUpper += DecoderUtils.getComplexAbsolute(complexArrayEndResponseUpper.real[i], complexArrayEndResponseUpper.imag[i]);
-                sumAbsEndResponseLower += DecoderUtils.getComplexAbsolute(complexArrayEndResponseLower.real[i], complexArrayEndResponseLower.imag[i]);
-            }
-
-
-/* Without Hilbert
-            double sumAbsEndResponseUpper = 0;
-            double sumAbsEndResponseLower = 0;
-            for(int i = 0; i<endResponseUpperDouble.length; i++){
-                sumAbsEndResponseUpper += Math.abs(endResponseUpperDouble[i]);
-                sumAbsEndResponseLower += Math.abs(endResponseLowerDouble[i]);
-            }
-*/
-
-            long endMessageTimestamp = System.nanoTime();
-            ////Log.d("Timing", "From read to before end message detection: " + String.valueOf((endMessageTimestamp-readTimestamp)/1000000) + "ms");
-
-            //Log.d("EndResponseAvgBefore", "end factor: " + sumAbsEndResponseLower/sumAbsEndResponseUpper);
-            if(sumAbsEndResponseLower > endFactor * sumAbsEndResponseUpper) {
-                // THIS IS TRUE IN CASE WE FOUND AN END FRAME NOW ITS TIME TO DECODE THE MESSAGE IN BETWEEN
-                //Log.d("EndResponseAvg", "detection with factor: " + sumAbsEndResponseLower / sumAbsEndResponseUpper + " and " + sumAbsStartResponseUpper/sumAbsStartResponseLower);
-
-                analyzeMessage(analysisHistoryBuffer);
-
-            }
-
-        }
-
-        synchronized (historyBuffer) {
-            historyBuffer.incrementAnalysisIndex(analysisWinStep);
-        }
-    }
-
-    private void analyzeMessage(float[] analysisHistoryBuffer) {
-        int overlapForSpectrogramInSamples = winLenForSpectrogramInSamples - analysisWinStep;
-        //int overlapForSpectrogramInSamples = Math.round(winLenForSpectrogramInSamples * 0.875f);
-
-        // High overlap (8) makes the visualization more accurate but is quite slow. Low overlap (2) is a minimum to see something
-        int overlapFactor = Math.round((float) winLenForSpectrogramInSamples / (winLenForSpectrogramInSamples - overlapForSpectrogramInSamples));
-        // Make overlapFactor a parameter (overriding it is nice for demo purposes)
-        //overlapFactor = 8;
-        int nbWinLenForSpectrogram = Math.round(overlapFactor * (float) historyBufferSize / (float) winLenForSpectrogramInSamples);
-
-        //Log.d("nbWinLenForSpectrogram",String.valueOf(nbWinLenForSpectrogram));
-        //Log.d("overlapFactor",String.valueOf(overlapFactor));
-
-
-
-        /* Now passed as parameter to be sure we work on the right piece of data
-        float analysisHistoryBuffer[];
-        synchronized (historyBuffer) {
-            analysisHistoryBuffer = historyBuffer.getArray();
-        }
-        */
-
-        // Should we access the historyBuffer directly ?
-        double[][] historyBufferDouble = new double[nbWinLenForSpectrogram][winLenForSpectrogramInSamples];
-        for(int j = 0; j<historyBufferDouble.length;j++ ) {
-            int helpArrayCounter = 0;
-            //Log.d("ForLoopVal", String.valueOf(j*analysisWinLen));
-            for (int i = (j/overlapFactor)*winLenForSpectrogramInSamples + ((j%overlapFactor) * winLenForSpectrogramInSamples/overlapFactor); i < analysisHistoryBuffer.length && i < (1 + j/overlapFactor)*winLenForSpectrogramInSamples + ((j%overlapFactor) * winLenForSpectrogramInSamples/overlapFactor); i++) {
-                historyBufferDouble[j][helpArrayCounter] = (double) analysisHistoryBuffer[i];
-                helpArrayCounter++;
-            }
-        }
-        //double[][] historyBufferDoubleComplex = new double[nbWinLenForSpectrogram][winLenForSpectrogramInSamples];//[winLenForSpectrogramInSamples*2];
-        HammingWindow hammWin = new HammingWindow(winLenForSpectrogramInSamples);
-        DoubleFFT_1D mFFT = new DoubleFFT_1D(winLenForSpectrogramInSamples);
-        double[][] historyBufferDoubleAbsolute = new double[nbWinLenForSpectrogram][winLenForSpectrogramInSamples / 2];
-        float[][] historyBufferFloatNormalized = new float[nbWinLenForSpectrogram][historyBufferDoubleAbsolute[0].length];
-        double fftSum = 0;
-        int helpCounter;
-        for(int j = 0; j<historyBufferDoubleAbsolute.length;j++ ) {
-            // n is even [DONE on winLenForSpectrogramInSamples]
-            //double[] complexSignal = new double[winLenForSpectrogramInSamples];//[winLenForSpectrogramInSamples * 2];
-            hammWin.applyWindow(historyBufferDouble[j]);
-            //System.arraycopy(historyBufferDouble[j], 0, complexSignal, 0, winLenForSpectrogramInSamples);
-
-            mFFT.realForward(historyBufferDouble[j]);
-
-            // Get absolute value of the complex FFT result
-            helpCounter = 0;
-            //fftSum = 0;
-            for (int l = 0; l < historyBufferDouble[j].length ; l++) {
-                if (l % 2 == 0) { //Modulo 2 is used to get only the real (every second) value
-                    double absolute = DecoderUtils.getComplexAbsolute(historyBufferDouble[j][l],historyBufferDouble[j][l+1]);
-                    historyBufferDoubleAbsolute[j][helpCounter] = absolute;
-                    fftSum += absolute;
-                    helpCounter++;
-                }
-            }
-/*
-            // Normalize over one column [NOTE: It looks like results are better with fftSum over the whole spectrum, maybe because of the overlap]
-            for (int l = 0; l < historyBufferDoubleAbsolute[j].length ; l++) {
-                float normalized = 0.0001F;
-                if(fftSum != 0 && historyBufferDoubleAbsolute[j][l] != 0) {
-                    normalized = (float) (historyBufferDoubleAbsolute[j][l]/fftSum);
-                } // Else all the values are 0 so we do not really care ?
-                historyBufferFloatNormalized[j][l] = normalized;
-            }
-*/
-        }
-
-        //Log.d("NbValuesAbsFFT",String.valueOf(historyBufferDoubleAbsolute[0].length));
-
-        for(int j = 0; j<historyBufferFloatNormalized.length;j++ ) {
-            for (int i = 0; i < historyBufferDoubleAbsolute[0].length; i++) {
-                //historyBufferFloatNormalized[j][i] = (float) historyBufferDouble[j][i];
-                //if(historyBufferDoubleAbs[j][i] == 0) {
-                //    historyBufferFloatNormalized[j][i] = (float) Math.log(0.0000001);
-                //}else{
-                float normalized = 0.0001F;
-                if(fftSum != 0) {
-                    //  Normalize over one block at a time and check if it improves the visualization [NOTE: It looks like results are better with fftSum over the whole spectrum, maybe because of the overlap]
-                    normalized = (float) (historyBufferDoubleAbsolute[j][i]/fftSum);
-                } // Else all the values are 0 so we do not really care
-                //if (historyBufferDoubleAbsolute[j][i] != 0) {
-                //    normalized = (float) historyBufferDoubleAbsolute[j][i];
-                //}
-                historyBufferFloatNormalized[j][i] = normalized;
-                //}
-            }
-        }
-
-
-        int lowerCutoffFrequency = frequencies[0]-frequencyOffsetForSpectrogram;
-        int upperCutoffFrequency = frequencies[frequencies.length-1]+frequencyOffsetForSpectrogram;
-        int lowerCutoffFrequencyIdx = (int)((float)lowerCutoffFrequency/(float)Fs*(float)winLenForSpectrogramInSamples);// + 1;
-        int upperCutoffFrequencyIdx = (int)((float)upperCutoffFrequency/(float)Fs*(float)winLenForSpectrogramInSamples);// + 1;
-
-
-        // Check if the normalization on a column instead on all the whole message really improved the detection.
-        // Cut away unimportant frequencies, logarithmize and then normalize
-        double[][] P = new double[nbWinLenForSpectrogram][upperCutoffFrequencyIdx-lowerCutoffFrequencyIdx + 1];
-        double[][] input = new double[nbWinLenForSpectrogram][upperCutoffFrequencyIdx-lowerCutoffFrequencyIdx + 1];
-        int arrayCounter;
-        double logSum;
-        for(int j = 0; j<historyBufferDoubleAbsolute.length; j++) {
-            arrayCounter = 0;
-            logSum = 0;
-            for(int i = lowerCutoffFrequencyIdx; i <= upperCutoffFrequencyIdx;i++) {
-                if(historyBufferDoubleAbsolute[j][i]==0){
-                    P[j][arrayCounter] = 0.0000001;
-                }else {
-                    P[j][arrayCounter] = historyBufferDoubleAbsolute[j][i];
-                }
-                P[j][arrayCounter] = Math.log(P[j][arrayCounter]);
-                logSum += P[j][arrayCounter];
-                arrayCounter++;
-            }
-
-            // Normalization
-            for(int i = 0; i <= upperCutoffFrequencyIdx-lowerCutoffFrequencyIdx; i++) {
-                input[j][i] = (float) (P[j][i] / logSum);
-            }
-        }
-
-
-        int step = winLenForSpectrogramInSamples-overlapForSpectrogramInSamples;
-        int nVectorsPerBlock =  overlapFactor;//Math.round(bitperiodInSamples/step); // Isn't nVectorsPerBlock equal to overlapFactor ?! Not in matlab.
-        int nVectorsPerPause =   Math.round((float) pauseperiodInSamples/step);
-        int[] blockCenters = new int[nBlocks]; //Math.round(nVectorsPerBlock/2);
-        int[] pauseCenters  = new int[nBlocks - 1]; //Math.round(nVectorsPerBlock+(nVectorsPerPause)/2);
-
-        // Compute block centers
-        // [CHECKED] blockCenters are equivalent to matlab indices
-        blockCenters[0] = Math.round((float) nVectorsPerBlock/2) - 1; //We substract one compared to Octave because indexes start at 0 in Java
-        pauseCenters[0] =  Math.round(nVectorsPerBlock+((float) nVectorsPerPause)/2); // No need to substract one again (it is based on blockCenters).
-        for(int i=1; i < nBlocks; i++) {
-            blockCenters[i] = blockCenters[i - 1] + nVectorsPerBlock + nVectorsPerPause;
-            if(i<nBlocks-1) pauseCenters[i] = pauseCenters[i - 1] + nVectorsPerBlock + nVectorsPerPause;
-            //Log.d("Block center ", i + " --> " + blockCenters[i]);
-        }
-
-        // [CHECKED] frequencyCenterIndices are equivalent to matlab indices (one below, but it starts at 0 in Java, at 1 in matlab)
-        float[][] frequencyCenterIndices = new float[nBlocks][config.getnFrequencies()];
-        // TODO: First loop not really needed
-        for(int k = 0; k<nBlocks; k++) {
-            for (int idxFrequencies = 0; idxFrequencies < config.getnFrequencies(); idxFrequencies++) {
-                // TODO: Upper and Lower inverted (hence the need for the loop going reverse a dozen lines below)
-                frequencyCenterIndices[k][idxFrequencies] = findClosestValueIn1DArray(frequencies[idxFrequencies], winLenForSpectrogramInSamples, input[k].length, upperCutoffFrequencyIdx, lowerCutoffFrequencyIdx); //computation is different than in Matlab
-            }
-        }
-
-        //decode using spectrogram
-        int[] messageDecodedBySpec = new int[(nBlocks-2)/2 * config.getnFrequencies()];
-        arrayCounter = 0;
-        // Go through all message blocks, skipping start and end block with a stepsize of 2 (because we always have a normal block and an inverted block)
-        for(int j = 1; j<nBlocks-1; j=j+2){
-            for(int m = frequencyCenterIndices[j].length-1; m>=0; m--){
-                int currentCenterFreqIdx = (int)frequencyCenterIndices[j][m];
-
-                // Matlab values range between 0 and -20 or so, always negative and not so small
-                // Android values do not seem to have a clear range, sometimes positive sometimes negative, often close to 0
-                double currentBit = getPointAndNeighborsAggreagate(input, currentCenterFreqIdx, blockCenters[j], nNeighborsFreqUpDown, nNeighborsTimeLeftRight, aggFcn);
-                double currentBitInv = getPointAndNeighborsAggreagate(input, currentCenterFreqIdx, blockCenters[j + 1], nNeighborsFreqUpDown, nNeighborsTimeLeftRight, aggFcn);
-
-                // Check why we had to change > to <
-                if (currentBit < currentBitInv) {
-                    messageDecodedBySpec[arrayCounter] = 1;
-                }
-                else{
-                    messageDecodedBySpec[arrayCounter] = 0;
-                }
-                arrayCounter++;
-            }
-            //Log.d("arraycounter", String.valueOf(arrayCounter));
-        }
-        //Log.d("Decoded bit sequence", Arrays.toString(messageDecodedBySpec));
-
-        int parityCheckResult = crc.checkMessageCRC(messageDecodedBySpec/*, ConfigConstants.GENERATOR_POLYNOM*/);
-
-        if (!silentMode && parityCheckResult == 0) {
-            setLoopStopped(true);
-        }
-        notifySpectrumListeners(historyBufferFloatNormalized, parityCheckResult == 0);
-
-        // Decode message to UTF8
-        String decodedBitSequence = Arrays.toString(messageDecodedBySpec).replace(", ", "").replace("[","").replace("]","");
-        String bitSequenceWithoutFillingAndCRC = DecoderUtils.removeFillingCharsAndCRCChars(decodedBitSequence, ConfigConstants.GENERATOR_POLYNOM.length);
-        final byte[] receivedMessage = DecoderUtils.binaryToBytes(bitSequenceWithoutFillingAndCRC);
-
-        final long decodingTimeNanosecond = System.nanoTime()-readTimestamp;
-        //Log.d("Timing", "From read to received message: " + String.valueOf((decodingTimeNanosecond)/1000000) + "ms. CRC: " + String.valueOf(parityCheckResult));
-
-        SoniTalkMessage message = new SoniTalkMessage(receivedMessage, parityCheckResult == 0, decodingTimeNanosecond);
-        if (returnsRawAudio()) {
-            message.setRawAudio(convertFloatToShort(analysisHistoryBuffer));
-        }
-
-        notifyMessageListeners(message);
-
-        //Original Bitsequence for the text "Hello Sonitalk" from SoniTalk Encoder 0100100001100001011011000110110001101111001000000101001101101111011011100110100101110100011000010110110001101011000110010001100100011001000110010001110010010100
-    }
-
-
-    private int getMinWinLenDividableByStepFactor(int requestedSize, int stepFactor) {
-        //Log.i(TAG, "Check dividability by stepFactor = " + stepFactor + " for requestSize = " + requestedSize);
-        minBufferSize = AudioRecord.getMinBufferSize(Fs,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        if(minBufferSize < 0) {
-            Log.e(TAG, "Error getting the minimal buffer size: " + minBufferSize);
-            return -1;
-        }
-        while (requestedSize < minBufferSize || requestedSize % stepFactor != 0) {
-            requestedSize++;
-        }
-        Log.i(TAG, "requestedSize returned: " + requestedSize);
-        return requestedSize;
-    }
-
-
-    private float findClosestValueIn1DArray(int value, int winlen, int arraylength, int upperIdx, int lowerIdx){
-        float arrayIndexRelative;
-        float arrayIndex;
-
-        float frequencyIndex = DecoderUtils.freq2idx(value, Fs, winlen);
-        arrayIndexRelative = DecoderUtils.getRelativeIndexPosition(frequencyIndex, upperIdx, lowerIdx);
-        arrayIndex = ((float)arraylength*arrayIndexRelative);
-        //Log.d("findClosest", "arrayIndex: " + arrayIndex);
-        //arrayIndex = frequencyIndex;
-        return arrayIndex;
-    }
-
-    /**
-     * Returns an aggregation (e.g. mean) of the values contained in the cell(s) around the one at [row][col] position
-     * Row and column are "reversed" compared to the matlab prototype
-     * @param data
-     * @param row Frequency center index
-     * @param col Block center index
-     * @param nRowsNeighborsLeftRight How many frequency-index rows to include (on the left AND right side)
-     * @param nColsNeighborsLeftRight How many block-index columns to include (on the left AND right side)
-     * @param aggFunction
-     * @return
-     */
-    private double getPointAndNeighborsAggreagate(double[][] data,int row,int col,int nRowsNeighborsLeftRight, int nColsNeighborsLeftRight, String aggFunction){
-        double val = -1;
-        int valuesRange = (nRowsNeighborsLeftRight+nColsNeighborsLeftRight+1)*(nRowsNeighborsLeftRight+nColsNeighborsLeftRight+1);//1+nRowsNeighborsLeftRight*2+nColsNeighborsLeftRight*2;
-        double[] values = new double[valuesRange];
-        int valuecounter = 0;
-
-        for(int i = nRowsNeighborsLeftRight*(-1); i <= nRowsNeighborsLeftRight; i++){
-            for(int j = nColsNeighborsLeftRight*(-1); j <= nColsNeighborsLeftRight; j++){
-                if(i!=0 || j!=0){ //[0,0] is done lower
-                    values[valuecounter] = data[col+j][row+i];
-                    valuecounter++;
-
-                }
-            }
-        }
-        // Note: Values are extremely similar on the same row (same frequency), but different for the frequencies above and under.
-        // Handling the [0,0] case
-        values[valuecounter] = data[col][row];
-
-        switch(aggFunction){
-            case "mean":
-                val = DecoderUtils.mean(values);
-                break;
-            case "max":
-                val = DecoderUtils.max(values);
-                break;
-            case "median":
-                Arrays.sort(values);
-                val = DecoderUtils.median(values);
-                break;
-        }
-        //Log.d("ValuesAgg", Arrays.toString(values));
-        //Log.d("ValAgg", val + "");
-
-        return val;
-    }
-
-    /**
-     * Called from receiveBackground(long delayMilliseconds) to cancel the job after delayMilliseconds
-     *
-     */
-    private void cancelBackgroundReceiving() {
-        //if (!isLoopStopped()) //Should stop anyways right ?
-        setLoopStopped(true);
-        setDecoderState(STATE_CANCELLED);
-        soniTalkContext.cancelNotificationReceiving();
-    }
-
-    /**
-     * Captures audio and tries decoding for delayMilliseconds ms. Audio processing occurs in a separate Thread.
-     * Detected messages will be notified to listeners via the onMessageReceived callback.
-     * Cancellation will be called on the Thread currently calling this method.
-     * @param delayMilliseconds Duration you want to try and receive a message before cancelling.
-     * @throws DecoderStateException
-     */
-    public void receiveBackground(long delayMilliseconds, int requestCode) throws DecoderStateException {
-        /*
-         * Inspired from https://stackoverflow.com/q/7882739/5232306.
-         */
-        receiveBackground(requestCode);
-        delayhandler.postDelayed(new Runnable()
-        {
-            @Override
-            public void run() {
-                cancelBackgroundReceiving();
-            }
-        }, delayMilliseconds );
     }
 
     /**
@@ -997,11 +477,11 @@ public class SoniTalkDecoder {
 
 
     private synchronized boolean isLoopStopped() {
-        return loopStopped;
+        return loopStopped.get();
     }
 
     private synchronized void setLoopStopped(boolean loopStopped) {// Consider using an internal object for the synchronization
-        this.loopStopped = loopStopped;
+        this.loopStopped.set(loopStopped);
     }
 
     public void addMessageListener(MessageListener listener) {
@@ -1062,6 +542,54 @@ public class SoniTalkDecoder {
      */
     public synchronized void setReturnRawAudio(boolean returnRawAudio) {
         this.returnRawAudio = returnRawAudio;
+    }
+
+
+
+    public static final class DecoderThread implements Runnable {
+        private Queue<short[]> bufferToProcess = new ConcurrentLinkedQueue<short[]>();
+        private OpenWarble openWarble;
+        private AtomicBoolean loopStopped;
+
+        public DecoderThread(SoniTalkConfig config, Double Fs, AtomicBoolean loopStopped, MessageCallback callback) {
+            Configuration configuration = config.getDriverConfiguration(Fs);
+            openWarble = new OpenWarble(configuration);
+            openWarble.setCallback(callback);
+            this.loopStopped = loopStopped;
+        }
+
+        public void addSample(short[] sample) {
+            bufferToProcess.add(sample);
+        }
+
+        @Override
+        public void run() {
+            while (!loopStopped.get()){
+                while(!bufferToProcess.isEmpty()) {
+                    short[] buffer = bufferToProcess.poll();
+                    if(buffer != null) {
+                        boolean doProcessBuffer = true;
+                        while(doProcessBuffer) {
+                            doProcessBuffer = false;
+                            double[] samples = new double[Math.min(buffer.length, openWarble.getMaxPushSamplesLength())];
+                            for (int i = 0; i < samples.length; i++) {
+                                samples[i] = buffer[i] / (double)Short.MAX_VALUE;
+                            }
+                            openWarble.pushSamples(samples);
+                            if (buffer.length > samples.length) {
+                                buffer = Arrays.copyOfRange(buffer, samples.length, buffer.length);
+                                doProcessBuffer = true;
+                            }
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException ex) {
+                    break;
+                }
+            }
+        }
     }
 }
 

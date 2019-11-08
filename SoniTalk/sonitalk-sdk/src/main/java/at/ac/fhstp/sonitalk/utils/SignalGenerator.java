@@ -237,8 +237,8 @@ public class SignalGenerator {
     }
 
     /**
-     * Performs the fft to get a frequency-referenced signal and sets everything to zero where no audio signal should be in the message.
-     * Executes the complex inverse to get a time-referenced signal again.
+     * Performs the fft to getDriverConfiguration a frequency-referenced signal and sets everything to zero where no audio signal should be in the message.
+     * Executes the complex inverse to getDriverConfiguration a time-referenced signal again.
      * @param fftSize size for fft
      * @param inputSignal the signal to be transformed
      * @return
@@ -253,8 +253,8 @@ public class SignalGenerator {
 
         mFFT.realForwardFull(complexSignal); //make the fft on the complex signal
 
-        double minFreq = cutoffFreqDownIdx[0]; //get the lowest frequency after the sort
-        double maxFreq = cutoffFreqUpIdx[whiteNoiseBands.length-1]; //get the highest frequency after the sort
+        double minFreq = cutoffFreqDownIdx[0]; //getDriverConfiguration the lowest frequency after the sort
+        double maxFreq = cutoffFreqUpIdx[whiteNoiseBands.length-1]; //getDriverConfiguration the highest frequency after the sort
 
         for (double j = 0; j < minFreq; j++) {
             complexSignal[(int)j] = 0.0f; //set all values up to the lowest frequency to 0

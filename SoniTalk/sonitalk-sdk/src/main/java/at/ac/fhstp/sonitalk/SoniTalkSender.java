@@ -154,15 +154,8 @@ public class SoniTalkSender {
                     @Override
                     public void onPeriodicNotification(AudioTrack arg0) {}
                 });
-                // Increase the loudness of our signal
-                LoudnessEnhancer enhancer = new LoudnessEnhancer(currentAudioTrack.getAudioSessionId());
-                enhancer.setTargetGain(700);
-                enhancer.setEnabled(true);
 
-                /* Do we want to handle the audio volume here ? Then pass context ?
-                AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-                audioManager.setStreamVolume(3, (int) Math.round((audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * volume/100.0D)), 0);
-                */
+
                 // Should we handle potential errors (negative results)
                 int result = currentAudioTrack.write(message.getRawAudio(), 0, (winLenSamples/*+(winLenSamples/65)*/)); //put the whiteNoise shortarray into the player, buffersize winLenSamples are Shorts here
 

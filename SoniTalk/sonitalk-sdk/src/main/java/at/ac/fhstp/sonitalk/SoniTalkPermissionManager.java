@@ -473,7 +473,7 @@ import java.util.concurrent.atomic.AtomicInteger;
             }
         }
         else if (permissionLevel.get() == 1) {
-            if (sessionPermissionGranted) { //No need to get it from sharedpref as it is based on a value that was in Sharedpref.
+            if (sessionPermissionGranted) { //No need to getDriverConfiguration it from sharedpref as it is based on a value that was in Sharedpref.
                 //Log.d(TAG, "selfPermission returns true: L1 and sessionPermissionGranted");
                 sdkListener.send(SoniTalkContext.ON_REQUEST_GRANTED, getRequestCodeBundle(context));
                 ed.remove(context.getString(R.string.bundleRequestCode_key)).apply();

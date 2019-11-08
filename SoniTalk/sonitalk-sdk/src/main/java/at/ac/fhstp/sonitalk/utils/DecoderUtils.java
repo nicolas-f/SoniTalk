@@ -120,8 +120,8 @@ public final class DecoderUtils {
 
 
     /**
-     * Helper to get maximum value out of double array
-     * @param values array to get the max of
+     * Helper to getDriverConfiguration maximum value out of double array
+     * @param values array to getDriverConfiguration the max of
      * @return the highest value of the array passed
      */
     public static double max(double[] values) {
@@ -170,7 +170,7 @@ public final class DecoderUtils {
 
     /**
      * Get the index of a specific frequency depending on sample rate and window length
-     * @param freq frequency to get the index of
+     * @param freq frequency to getDriverConfiguration the index of
      * @param fs sample rate
      * @param winlen window length
      * @return the index of the frequency passed

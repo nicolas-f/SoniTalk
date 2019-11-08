@@ -30,4 +30,5 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.8.1'
 
     implementation project(':sonitalk-sdk')
+    implementation files('../../SoniTalk/sonitalk-sdk/libs/org/noise-planet/jwarble/0.2.2/jwarble-0.2.2.jar')
 }

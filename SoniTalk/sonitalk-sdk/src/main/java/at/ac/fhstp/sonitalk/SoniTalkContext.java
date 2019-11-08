@@ -90,7 +90,7 @@ public class SoniTalkContext {
 
     /**
      * Instantiate a SoniTalkContext, allowing to create Encoder, Decoder and Sender objects.
-     * @param context is used to get an application context.
+     * @param context is used to getDriverConfiguration an application context.
      * @param sdkListener ResultReceiver which will receive callbacks from SoniTalk. Please set
      *                    the handler according to which thread should execute the callbacks (often
      *                    the UI Thread if it handles UI components). Please call setReceiver and
@@ -203,7 +203,7 @@ public class SoniTalkContext {
     }
 
     /**
-     * @param sampleRate is used to get a sender with the correct sample rate
+     * @param sampleRate is used to getDriverConfiguration a sender with the correct sample rate
      * @return a new SoniTalkSender to transmit the encoded message of the encoder
      */
     public SoniTalkSender getSender(int sampleRate){
@@ -354,7 +354,7 @@ public class SoniTalkContext {
         /**
          * Update the content of the status notification or remove it depending on the states.
          * For now removes the notification when the states parameter is empty or equal to IDLE.
-         * @param context a Context to get access to the Notification Service
+         * @param context a Context to getDriverConfiguration access to the Notification Service
          * @param states EnumSet of SoniTalkContext.State
          */
         public static void updateStatusNotification(Context context, EnumSet<State> states){
