@@ -204,12 +204,12 @@ public class MainActivity extends BaseActivity implements SoniTalkDecoder.Messag
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             int currentVolume = audioManager.getStreamVolume(3);
             sp = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-//            SharedPreferences.Editor ed = sp.edit();
-//            ed.putInt(ConfigConstants.CURRENT_VOLUME, currentVolume);
-//            ed.apply();
+            SharedPreferences.Editor ed = sp.edit();
+            ed.putInt(ConfigConstants.CURRENT_VOLUME, currentVolume);
+            ed.apply();
 
-            //int volume = Integer.valueOf(sp.getString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT));
-            //audioManager.setStreamVolume(3, (int) Math.round((audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * volume/100.0D)), 0);
+            int volume = Integer.valueOf(sp.getString(ConfigConstants.LOUDNESS, ConfigConstants.SETTING_LOUDNESS_DEFAULT));
+            audioManager.setStreamVolume(3, (int) Math.round((audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * volume/100.0D)), 0);
 
             if (soniTalkContext == null) {
                 soniTalkContext = SoniTalkContext.getInstance(MainActivity.this, soniTalkPermissionsResultReceiver);

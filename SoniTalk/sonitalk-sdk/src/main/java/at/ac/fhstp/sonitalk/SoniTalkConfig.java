@@ -45,12 +45,12 @@ public class SoniTalkConfig {
     }
 
     public org.noise_planet.jwarble.Configuration getDriverConfiguration(double sampleRate) {
-//        return new org.noise_planet.jwarble.Configuration(getMaxBytes(), sampleRate,
-//                getFrequencyZero(), getFrequencySpace(), 0,
-//                getBitperiod() / 1000.0,
-//                getPauseperiod() / 1000.0, org.noise_planet.jwarble.Configuration.DEFAULT_TRIGGER_SNR,
-//                org.noise_planet.jwarble.Configuration.DEFAULT_DOOR_PEAK_RATIO, org.noise_planet.jwarble.Configuration.DEFAULT_RS_ENCODE);
-        return org.noise_planet.jwarble.Configuration.getAudible(maxBytes, sampleRate);
+        return new org.noise_planet.jwarble.Configuration(getMaxBytes(), sampleRate,
+                getFrequencyZero(), getFrequencySpace(), 0,
+                getBitperiod() / 1000.0,
+                getPauseperiod() / 1000.0, org.noise_planet.jwarble.Configuration.DEFAULT_TRIGGER_SNR,
+                org.noise_planet.jwarble.Configuration.DEFAULT_DOOR_PEAK_RATIO, org.noise_planet.jwarble.Configuration.DEFAULT_RS_ENCODE);
+        //return org.noise_planet.jwarble.Configuration.getAudible(maxBytes, sampleRate);
     }
 
     public int getFrequencyZero() {

@@ -155,6 +155,10 @@ public class SoniTalkSender {
                     public void onPeriodicNotification(AudioTrack arg0) {}
                 });
 
+                // Increase the loudness of our signal
+                LoudnessEnhancer enhancer = new LoudnessEnhancer(currentAudioTrack.getAudioSessionId());
+                enhancer.setTargetGain(700);
+                enhancer.setEnabled(true);
 
                 // Should we handle potential errors (negative results)
                 int result = currentAudioTrack.write(message.getRawAudio(), 0, (winLenSamples/*+(winLenSamples/65)*/)); //put the whiteNoise shortarray into the player, buffersize winLenSamples are Shorts here
